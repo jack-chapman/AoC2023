@@ -1,4 +1,3 @@
-use rayon::prelude::*;
 use std::{
     collections::HashMap,
     ops::{Range, RangeInclusive},
@@ -8,6 +7,7 @@ fn main() {
     let input = include_str!("./input.txt");
 
     let part_1 = process_part_1(input);
+
     let part_2 = process_part_2(input);
 
     println!("{part_1}");
@@ -23,6 +23,15 @@ impl Map {
         for (range, shift_amount) in &self.mappings {
             if range.contains(&value) {
                 return value + shift_amount;
+            }
+        }
+        value
+    }
+
+    fn map_value_rev(&self, value: i64) -> i64 {
+        for (range, shift_amount) in &self.mappings {
+            if range.contains(&value) {
+                return value - shift_amount;
             }
         }
         value
@@ -62,6 +71,7 @@ fn get_seed_ranges(input: &str) -> Vec<Range<i64>> {
         .map(|a| a[0]..(a[0] + a[1]))
         .collect()
 }
+
 fn get_maps(input: &str) -> Vec<Map> {
     input
         .split("\n\n")
@@ -77,6 +87,30 @@ fn get_maps(input: &str) -> Vec<Map> {
                         .map(|num| num.parse::<i64>().unwrap())
                         .collect();
                     let range = nums[1]..=(nums[1] + nums[2] - 1);
+                    let shift_amount = nums[0] - nums[1];
+                    (range, shift_amount)
+                })
+                .collect();
+            Map { mappings }
+        })
+        .collect()
+}
+
+fn get_maps_rev(input: &str) -> Vec<Map> {
+    input
+        .split("\n\n")
+        .skip(1)
+        .map(|line| {
+            let (_, raw_map) = line.split_once(':').unwrap();
+            let mappings: HashMap<_, _> = raw_map
+                .split("\n")
+                .filter(|l| !l.is_empty())
+                .map(|nums| {
+                    let nums: Vec<_> = nums
+                        .split_whitespace()
+                        .map(|num| num.parse::<i64>().unwrap())
+                        .collect();
+                    let range = nums[0]..=(nums[0] + nums[2] - 1);
                     let shift_amount = nums[0] - nums[1];
                     (range, shift_amount)
                 })
@@ -105,30 +139,28 @@ fn process_part_1(input: &str) -> i64 {
     *results.iter().min().unwrap()
 }
 
+fn ranges_contain_value(ranges: &Vec<Range<i64>>, value: i64) -> bool {
+    ranges.iter().any(|range| range.contains(&value))
+}
+
 fn process_part_2(input: &str) -> i64 {
-    // get seed numbers from line 1
     let seed_ranges = get_seed_ranges(input);
     // parse remaining input into maps
-    let maps = get_maps(input);
-    // iterate over seeds
-    let result = seed_ranges
-        .into_par_iter()
-        .map(|range| {
-            range
-                .into_par_iter()
-                .map(|seed| {
-                    let mut result = seed;
-                    for map in &maps {
-                        result = map.map_value(result);
-                    }
-                    result
-                })
-                .min()
-                .unwrap()
-        })
-        .min()
-        .unwrap();
-    result
+    let maps = get_maps_rev(input);
+
+    let mut found = false;
+    let mut value = 0;
+    while !found {
+        let mut result = value;
+        for map in maps.iter().rev() {
+            result = map.map_value_rev(result);
+        }
+        found = ranges_contain_value(&seed_ranges, result);
+        if !found {
+            value += 1;
+        }
+    }
+    value
 }
 
 #[cfg(test)]
