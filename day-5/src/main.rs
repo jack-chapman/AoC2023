@@ -1,15 +1,20 @@
-use std::{collections::HashMap, ops::RangeInclusive};
+use rayon::prelude::*;
+use std::{
+    collections::HashMap,
+    ops::{Range, RangeInclusive},
+};
 
 fn main() {
     let input = include_str!("./input.txt");
 
     let part_1 = process_part_1(input);
+    let part_2 = process_part_2(input);
 
     println!("{part_1}");
+    println!("{part_2}");
 }
 #[derive(Debug)]
 struct Map {
-    name: String,
     mappings: HashMap<RangeInclusive<i64>, i64>,
 }
 
@@ -24,8 +29,21 @@ impl Map {
     }
 }
 
-fn process_part_1(input: &str) -> i64 {
-    // get seed numbers from line 1
+fn get_seeds(input: &str) -> Vec<i64> {
+    input
+        .lines()
+        .next()
+        .unwrap()
+        .split_once(':')
+        .unwrap()
+        .1
+        .trim()
+        .split_whitespace()
+        .map(|s| s.parse().unwrap())
+        .collect()
+}
+
+fn get_seed_ranges(input: &str) -> Vec<Range<i64>> {
     let seeds: Vec<i64> = input
         .lines()
         .next()
@@ -38,12 +56,18 @@ fn process_part_1(input: &str) -> i64 {
         .map(|s| s.parse().unwrap())
         .collect();
 
-    // parse remaining input into maps
-    let maps: Vec<_> = input
+    seeds
+        .windows(2)
+        .step_by(2)
+        .map(|a| a[0]..(a[0] + a[1]))
+        .collect()
+}
+fn get_maps(input: &str) -> Vec<Map> {
+    input
         .split("\n\n")
         .skip(1)
         .map(|line| {
-            let (name, raw_map) = line.split_once(':').unwrap();
+            let (_, raw_map) = line.split_once(':').unwrap();
             let mappings: HashMap<_, _> = raw_map
                 .split("\n")
                 .filter(|l| !l.is_empty())
@@ -57,12 +81,17 @@ fn process_part_1(input: &str) -> i64 {
                     (range, shift_amount)
                 })
                 .collect();
-            Map {
-                name: name.to_string(),
-                mappings,
-            }
+            Map { mappings }
         })
-        .collect();
+        .collect()
+}
+
+fn process_part_1(input: &str) -> i64 {
+    // get seed numbers from line 1
+    let seeds = get_seeds(input);
+
+    // parse remaining input into maps
+    let maps = get_maps(input);
     // iterate over seeds
     let mut results = vec![];
     for seed in seeds {
@@ -76,13 +105,38 @@ fn process_part_1(input: &str) -> i64 {
     *results.iter().min().unwrap()
 }
 
+fn process_part_2(input: &str) -> i64 {
+    // get seed numbers from line 1
+    let seed_ranges = get_seed_ranges(input);
+    // parse remaining input into maps
+    let maps = get_maps(input);
+    // iterate over seeds
+    let result = seed_ranges
+        .into_par_iter()
+        .map(|range| {
+            range
+                .into_par_iter()
+                .map(|seed| {
+                    let mut result = seed;
+                    for map in &maps {
+                        result = map.map_value(result);
+                    }
+                    result
+                })
+                .min()
+                .unwrap()
+        })
+        .min()
+        .unwrap();
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
     fn mapping() {
         let map = Map {
-            name: "test".to_string(),
             mappings: [(98..=99, 50 - 98), (50..=97, 52 - 50)].into(),
         };
 
@@ -105,6 +159,7 @@ mod tests {
             assert_eq!(result, expected, "{}", test);
         }
     }
+
     #[test]
     fn part_1() {
         let input = "seeds: 79 14 55 13
@@ -144,5 +199,46 @@ humidity-to-location map:
         let result = process_part_1(input);
 
         assert_eq!(result, 35);
+    }
+
+    #[test]
+    fn part_2() {
+        let input = "seeds: 79 14 55 13
+
+seed-to-soil map:
+50 98 2
+52 50 48
+
+soil-to-fertilizer map:
+0 15 37
+37 52 2
+39 0 15
+
+fertilizer-to-water map:
+49 53 8
+0 11 42
+42 0 7
+57 7 4
+
+water-to-light map:
+88 18 7
+18 25 70
+
+light-to-temperature map:
+45 77 23
+81 45 19
+68 64 13
+
+temperature-to-humidity map:
+0 69 1
+1 0 69
+
+humidity-to-location map:
+60 56 37
+56 93 4";
+
+        let result = process_part_2(input);
+
+        assert_eq!(result, 46);
     }
 }
