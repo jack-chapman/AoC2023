@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Debug, hash::Hash, str::FromStr};
+use std::{cmp::Ordering, collections::HashMap, fmt::Debug, hash::Hash, str::FromStr};
 
 use itertools::Itertools;
 
@@ -29,47 +29,18 @@ enum Card {
     Ace,
 }
 
-impl FromStr for Card {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "A" => Ok(Self::Ace),
-            "K" => Ok(Self::King),
-            "Q" => Ok(Self::Queen),
-            "J" => Ok(Self::Jack),
-            "T" => Ok(Self::Ten),
-            "9" => Ok(Self::Nine),
-            "8" => Ok(Self::Eight),
-            "7" => Ok(Self::Seven),
-            "6" => Ok(Self::Six),
-            "5" => Ok(Self::Five),
-            "4" => Ok(Self::Four),
-            "3" => Ok(Self::Three),
-            "2" => Ok(Self::Two),
-            _ => Err("Invalid input".to_string()),
+impl Card {
+    fn cmp_2(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (Self::Jack, Self::Jack) => Ordering::Equal,
+            (Self::Jack, _) => Ordering::Less,
+            (_, Self::Jack) => Ordering::Greater,
+            (a, b) => a.cmp(&b),
         }
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
-enum Card2 {
-    Jack,
-    Two,
-    Three,
-    Four,
-    Five,
-    Six,
-    Seven,
-    Eight,
-    Nine,
-    Ten,
-    Queen,
-    King,
-    Ace,
-}
-
-impl FromStr for Card2 {
+impl FromStr for Card {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -127,6 +98,16 @@ impl From<&[Card; 5]> for HandType {
     }
 }
 
+fn cmp_2_card_lists(a: &[Card; 5], b: &[Card; 5]) -> Ordering {
+    for (card_a, card_b) in a.iter().zip(b.iter()) {
+        let result = card_a.cmp_2(card_b);
+        if result != Ordering::Equal {
+            return result;
+        }
+    }
+    Ordering::Equal
+}
+
 #[derive(Debug, Clone)]
 struct Hand {
     cards: [Card; 5],
@@ -138,13 +119,31 @@ impl Hand {
         HandType::from(&self.cards)
     }
 
+    fn cmp_2(a: &Self, b: &Self) -> std::cmp::Ordering {
+        let equal = a == b;
+        if equal {
+            return std::cmp::Ordering::Equal;
+        }
+        let (our_hand, other_hand) = (
+            a.clone().jokerify().hand_type(),
+            b.clone().jokerify().hand_type(),
+        );
+        if our_hand != other_hand {
+            match our_hand > other_hand {
+                true => std::cmp::Ordering::Greater,
+                false => std::cmp::Ordering::Less,
+            }
+        } else {
+            cmp_2_card_lists(&a.cards, &b.cards)
+        }
+    }
     fn jokerify(&mut self) -> Self {
         if !self.cards.contains(&Card::Jack) {
             return self.clone();
         }
         let mut frequency_map: HashMap<Card, usize> = HashMap::new();
 
-        for card in &self.cards {
+        for card in self.cards.iter().filter(|card| **card != Card::Jack) {
             *frequency_map.entry(card.clone()).or_insert(0) += 1;
         }
 
@@ -152,14 +151,12 @@ impl Hand {
             .iter()
             .max_by(|(card_a, freq_a), (card_b, freq_b)| {
                 if freq_a == freq_b {
-                    return card_a.cmp(card_b);
+                    return card_a.cmp_2(card_b);
                 }
                 freq_a.cmp(freq_b)
             })
             .map(|(card, _)| card)
-            .unwrap();
-
-        dbg!(most_numerous_best_card);
+            .unwrap_or(&Card::Jack);
 
         let new_cards: Vec<Card> = self
             .cards
@@ -250,10 +247,10 @@ fn process_part_1(input: &str) -> u32 {
 fn process_part_2(input: &str) -> u32 {
     let mut hands: Vec<Hand> = input
         .lines()
-        .map(|line| line.parse::<Hand>().unwrap().jokerify())
+        .map(|line| line.parse::<Hand>().unwrap())
         .collect();
 
-    hands.sort();
+    hands.sort_by(Hand::cmp_2);
 
     hands
         .into_iter()
@@ -446,5 +443,59 @@ QQQJA 483";
         let result = process_part_2(input);
 
         assert_eq!(result, 5905);
+    }
+
+    #[test]
+    fn part_1_alt() {
+        let input = "2345A 1
+Q2KJJ 13
+Q2Q2Q 19
+T3T3J 17
+T3Q33 11
+2345J 3
+J345A 2
+32T3K 5
+T55J5 29
+KK677 7
+KTJJT 34
+QQQJA 31
+JJJJJ 37
+JAAAA 43
+AAAAJ 59
+AAAAA 61
+2AAAA 23
+2JJJJ 53
+JJJJ2 41";
+
+        let result = process_part_1(input);
+
+        assert_eq!(result, 6592);
+    }
+
+    #[test]
+    fn part_2_alt() {
+        let input = "2345A 1
+Q2KJJ 13
+Q2Q2Q 19
+T3T3J 17
+T3Q33 11
+2345J 3
+J345A 2
+32T3K 5
+T55J5 29
+KK677 7
+KTJJT 34
+QQQJA 31
+JJJJJ 37
+JAAAA 43
+AAAAJ 59
+AAAAA 61
+2AAAA 23
+2JJJJ 53
+JJJJ2 41";
+
+        let result = process_part_2(input);
+
+        assert_eq!(result, 6839);
     }
 }
